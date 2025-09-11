@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Wiki JA Recommender API
+  version: "1.0.0"
+servers:
+  - url: https://your-api.example.com
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /next_article:
+    get:
+      operationId: nextArticle
+      parameters:
+        - in: header
+          name: X-User-Handle
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Next unseen article for the user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  article_id: { type: integer }
+                  title: { type: string }
+                  url: { type: string }
+                  summary:
+                    type: object
+                    properties:
+                      extract: { type: string }
+                      thumbnail: { type: string }
+        "404":
+          description: No unseen article found
+  /react:
+    post:
+      operationId: react
+      parameters:
+        - in: header
+          name: X-User-Handle
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [article_id, reaction]
+              properties:
+                article_id:
+                  type: integer
+                reaction:
+                  type: string
+                  enum: [like, skip, block]
+      responses:
+        "200":
+          description: ok
