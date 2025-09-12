@@ -3,7 +3,7 @@ info:
   title: Wiki JA Recommender API
   version: "1.0.0"
 servers:
-  - url: https://your-api.example.com
+  - url: https://wikichat.urayaha.tokyo 
 paths:
   /health:
     get:
@@ -22,8 +22,8 @@ paths:
     get:
       operationId: nextArticle
       parameters:
-        - in: header
-          name: X-User-Handle
+        - in: query
+          name: user
           required: true
           schema:
             type: string
@@ -49,8 +49,8 @@ paths:
     post:
       operationId: react
       parameters:
-        - in: header
-          name: X-User-Handle
+        - in: query
+          name: user
           required: true
           schema:
             type: string

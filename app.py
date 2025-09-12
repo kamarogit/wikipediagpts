@@ -4,7 +4,7 @@ import os
 
 import aiosqlite
 import httpx
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
 
@@ -64,10 +64,10 @@ async def health():
 
 
 @app.get("/next_article")
-async def next_article(x_user_handle: str = Header(alias="X-User-Handle")):
+async def next_article(user: str = Query(alias="user")):
     conn = await get_db()
     try:
-        uid = await get_or_create_user(conn, x_user_handle)
+        uid = await get_or_create_user(conn, user)
         for _ in range(12):
             js = await fetch_random_summary()
 
@@ -128,10 +128,10 @@ async def next_article(x_user_handle: str = Header(alias="X-User-Handle")):
 
 
 @app.post("/react")
-async def react(inp: ReactIn, x_user_handle: str = Header(alias="X-User-Handle")):
+async def react(inp: ReactIn, user: str = Query(alias="user")):
     conn = await get_db()
     try:
-        uid = await get_or_create_user(conn, x_user_handle)
+        uid = await get_or_create_user(conn, user)
         await conn.execute(
             """
 update user_articles
