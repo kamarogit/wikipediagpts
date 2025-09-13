@@ -1,9 +1,12 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import os
 
 import aiosqlite
 import httpx
+from bs4 import BeautifulSoup
+from markdownify import markdownify as md
+import re
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
@@ -11,6 +14,10 @@ from pydantic import BaseModel
 LANG = "ja"
 DB_PATH = os.environ.get("DB_PATH", "wikipediagpts.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
+USER_AGENT = os.environ.get(
+    "WIKI_USER_AGENT",
+    "wikipediagpts/1.0 (+https://github.com/; contact: unknown)",
+)
 
 
 class ReactIn(BaseModel):
@@ -56,6 +63,67 @@ async def fetch_random_summary() -> dict:
         r = await client.get(url)
         r.raise_for_status()
         return r.json()
+
+
+def _extract_wikipedia_main_html(html: str) -> tuple[Optional[str], str]:
+    """
+    Wikipediaの記事HTMLから本体部分のHTMLを抽出する。
+    見出しタイトルと本文HTML（必要要素のみ）を返却。
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_el = soup.select_one("#firstHeading") or soup.title
+    title = title_el.get_text(strip=True) if title_el else None
+
+    content = soup.select_one("div#mw-content-text")
+    if not content:
+        # 取得できない場合は全体HTMLを返す（フォールバック）
+        return title, html
+
+    # Wikipedia特有のノイズを削除
+    selectors_to_remove = [
+        "table.infobox",
+        "table.vertical-navbox",
+        "table.navbox",
+        "div.hatnote",
+        "div.reflist",
+        "ol.references",
+        "div.sidebar",
+        "div.toc",
+        "span.mw-editsection",
+        "div.mw-kartographer-container",
+        "figure[role='navigation']",
+        "script",
+        "style",
+        "link",
+        "noscript",
+    ]
+    for selector in selectors_to_remove:
+        for el in content.select(selector):
+            el.decompose()
+
+    for el in content.select("sup.reference"):
+        el.decompose()
+
+    # 一部の空要素や冗長な改行を減らすためにクリーンアップ
+    # ここではHTML文字列に戻すだけに留める
+    return title, str(content)
+
+
+def _html_to_markdown(html: str) -> str:
+    markdown = md(html, heading_style="ATX")
+    # 連続改行の正規化
+    markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+    return markdown.strip()
+
+
+def _html_to_text(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(separator="\n")
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # 行末の余計な空白を削除
+    text = "\n".join(line.rstrip() for line in text.splitlines())
+    return text.strip()
 
 
 @app.get("/health")
@@ -125,6 +193,34 @@ async def next_article(user: str = Query(alias="user")):
         raise HTTPException(status_code=404, detail="No unseen article found (try again)")
     finally:
         await conn.close()
+
+
+@app.get("/article_content")
+async def article_content(
+    url: str = Query(alias="url"),
+    format: Literal["markdown", "text"] = Query("markdown", alias="format"),
+):
+    """指定URL（Wikipedia想定）をサーバ側で取得し、本文をMarkdown/テキストに正規化して返す。"""
+    headers = {"User-Agent": USER_AGENT}
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
+        try:
+            r = await client.get(url)
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"failed to fetch url: {e}")
+
+    title, main_html = _extract_wikipedia_main_html(r.text)
+    if format == "markdown":
+        content = _html_to_markdown(main_html)
+    else:
+        content = _html_to_text(main_html)
+
+    return {
+        "title": title,
+        "url": str(r.url),
+        "format": format,
+        "content": content,
+    }
 
 
 @app.post("/react")

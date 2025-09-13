@@ -70,3 +70,31 @@ paths:
       responses:
         "200":
           description: ok
+  /article_content:
+    get:
+      operationId: articleContent
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: format
+          required: false
+          schema:
+            type: string
+            enum: [markdown, text]
+            default: markdown
+      responses:
+        "200":
+          description: Normalized article content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string, nullable: true }
+                  url: { type: string }
+                  format: { type: string, enum: [markdown, text] }
+                  content: { type: string }
